@@ -1,0 +1,6 @@
+{
+  "name": "عالم محمد وياسمين ❤️",
+  "description": "الموقع الرومانسي الخاص بمحمد وياسمين — مساحة شخصية مليئة بالذكريات والرسائل والصور والأحلام والتواريخ المهمة.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
