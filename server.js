@@ -7,8 +7,8 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const port = parseInt(process.env.PORT || "3000", 10);
 const isProd = process.env.NODE_ENV === "production";
-app.use(express.json({ limit: "25mb" }));
-app.use(express.urlencoded({ extended: true, limit: "25mb" }));
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use((_req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
@@ -17,6 +17,38 @@ app.use((_req, res, next) => {
 });
 const dataDir = path.join(__dirname, "data");
 const dbFilePath = path.join(dataDir, "db.json");
+const DEFAULT_QUIZ_QUESTIONS = [
+  "\u0625\u064A\u0647 \u0623\u0643\u062A\u0631 \u062D\u0627\u062C\u0629 \u0628\u062A\u062D\u0628\u0647\u0627 \u0641\u064A \u0634\u062E\u0635\u064A\u062A\u064A\u061F",
+  "\u0625\u064A\u0647 \u0623\u0643\u062A\u0631 \u0623\u0643\u0644\u0629 \u0628\u062D\u0628\u0647\u0627 \u0648\u0645\u0628\u0634\u0628\u0639\u0634 \u0645\u0646\u0647\u0627\u061F",
+  "\u0625\u064A\u0647 \u0627\u0644\u0645\u0643\u0627\u0646 \u0627\u0644\u0644\u064A \u0646\u0641\u0633\u064A \u0623\u0632\u0648\u0631\u0647 \u0645\u0639\u0627\u0643\u061F",
+  "\u0625\u064A\u0647 \u0623\u0643\u062A\u0631 \u062D\u0627\u062C\u0629 \u0628\u062A\u0641\u0631\u062D\u0646\u064A \u0645\u0646 \u0642\u0644\u0628\u064A\u061F",
+  "\u0625\u064A\u0647 \u0623\u0643\u062A\u0631 \u0643\u0644\u0645\u0629 \u0628\u0642\u0648\u0644\u0647\u0627 \u0648\u0628\u062A\u062D\u0628 \u062A\u0633\u0645\u0639\u0647\u0627 \u0645\u0646\u064A\u061F",
+  "\u0625\u064A\u0647 \u0627\u0644\u0644\u0648\u0646 \u0627\u0644\u0645\u0641\u0636\u0644 \u0639\u0646\u062F\u064A\u061F",
+  "\u0625\u064A\u0647 \u0623\u0643\u062A\u0631 \u0648\u0642\u062A \u0628\u062D\u0628 \u0623\u062A\u0643\u0644\u0645 \u0641\u064A\u0647 \u0645\u0639\u0627\u0643\u061F",
+  "\u0625\u064A\u0647 \u0627\u0644\u062D\u0627\u062C\u0629 \u0627\u0644\u0644\u064A \u0646\u0641\u0633\u064A \u0646\u062A\u0639\u0644\u0645\u0647\u0627 \u0633\u0648\u0627\u061F",
+  "\u0625\u064A\u0647 \u0646\u0648\u0639 \u0627\u0644\u0623\u0641\u0644\u0627\u0645 \u0627\u0644\u0644\u064A \u0628\u062D\u0628 \u0646\u062A\u0641\u0631\u062C \u0639\u0644\u064A\u0647\u061F",
+  "\u0625\u064A\u0647 \u0623\u0643\u062A\u0631 \u0630\u0643\u0631\u0649 \u0645\u0645\u064A\u0632\u0629 \u0628\u064A\u0646\u0627 \u0628\u0627\u0644\u0646\u0633\u0628\u0627\u0644\u064A\u061F",
+  "\u0625\u064A\u0647 \u0623\u0643\u062A\u0631 \u062D\u0631\u0643\u0629 \u0628\u0639\u0645\u0644\u0647\u0627 \u0628\u062A\u062E\u0644\u064A\u0643 \u062A\u0628\u062A\u0633\u0645\u061F",
+  "\u0625\u064A\u0647 \u0623\u0643\u0628\u0631 \u062D\u0644\u0645 \u0646\u0641\u0633\u064A \u0623\u062D\u0642\u0642\u0647 \u0645\u0639\u0627\u0643\u061F",
+  "\u0625\u064A\u0647 \u0623\u0643\u062A\u0631 \u062D\u0627\u062C\u0629 \u0628\u062A\u0639\u0635\u0628\u0646\u064A \u0623\u0648 \u062A\u0648\u062A\u0631\u0646\u064A\u061F",
+  "\u0625\u064A\u0647 \u0647\u0648\u0627\u064A\u062A\u064A \u0627\u0644\u0645\u0641\u0636\u0644\u0629 \u0627\u0644\u0644\u064A \u0628\u0633\u062A\u0645\u062A\u0639 \u0628\u064A\u0647\u0627\u061F",
+  "\u0625\u064A\u0647 \u0627\u0644\u0645\u0634\u0631\u0648\u0628 \u0627\u0644\u0645\u0641\u0636\u0644 \u0639\u0646\u062F\u064A\u061F",
+  "\u0628\u062D\u0628 \u0627\u0644\u0635\u064A\u0641 \u0648\u0644\u0627 \u0627\u0644\u0634\u062A\u0627\u0621 \u0623\u0643\u062A\u0631\u061F",
+  "\u0625\u064A\u0647 \u0623\u0643\u062A\u0631 \u0635\u0641\u0629 \u0628\u0642\u062F\u0631\u0647\u0627 \u0641\u064A\u0643 \u0648\u0641\u064A \u0627\u0644\u0646\u0627\u0633\u061F",
+  "\u0625\u064A\u0647 \u0627\u0644\u0645\u0643\u0627\u0646 \u0627\u0644\u0644\u064A \u0628\u062D\u0633 \u0641\u064A\u0647 \u0628\u0623\u0639\u0644\u0649 \u062F\u0631\u062C\u0627\u062A \u0627\u0644\u0631\u0627\u062D\u0629\u061F",
+  "\u0625\u064A\u0647 \u0623\u0643\u062A\u0631 \u0623\u063A\u0646\u064A\u0629 \u0628\u062A\u0641\u0643\u0631\u0646\u064A \u0628\u064A\u0643 \u062F\u0627\u064A\u0645\u0627\u064B\u061F",
+  "\u0625\u064A\u0647 \u0623\u0643\u062A\u0631 \u0645\u0627\u062F\u0629 \u0623\u0648 \u0645\u062C\u0627\u0644 \u0628\u062D\u0628\u0647\u061F",
+  "\u0625\u064A\u0647 \u0627\u0644\u0643\u0644\u0645\u0629 \u0627\u0644\u0644\u064A \u0644\u0645\u0627 \u0628\u062A\u0642\u0648\u0644\u0647\u0627 \u0628\u062A\u0637\u0645\u0646\u064A\u061F",
+  "\u0628\u062D\u0628 \u0627\u0644\u0645\u0641\u0627\u062C\u0622\u062A \u0648\u0644\u0627 \u0627\u0644\u062A\u062E\u0637\u064A\u0637 \u0627\u0644\u0645\u0646\u0638\u0645\u061F",
+  "\u0625\u064A\u0647 \u0623\u0643\u062A\u0631 \u0645\u0648\u0642\u0641 \u0628\u064A\u0646\u0627 \u0645\u0634 \u0645\u0645\u0643\u0646 \u0623\u0646\u0633\u0627\u0647 \u0637\u0648\u0644 \u0639\u0645\u0631\u064A\u061F",
+  "\u0625\u064A\u0647 \u0623\u0643\u062A\u0631 \u062D\u0627\u062C\u0629 \u0628\u062A\u062E\u0644\u064A\u0646\u064A \u0641\u062E\u0648\u0631 \u0628\u064A\u0643 \u0648\u0628\u0646\u0641\u0633\u064A\u061F",
+  "\u0625\u064A\u0647 \u0627\u0644\u0646\u0634\u0627\u0637 \u0627\u0644\u0644\u064A \u0628\u0646\u062D\u0628\u0647 \u0641\u064A \u0648\u0642\u062A \u0641\u0631\u0627\u063A\u0646\u0627\u061F",
+  "\u0625\u064A\u0647 \u0623\u0648\u0644 \u0647\u062F\u064A\u0629 \u0646\u0641\u0633\u064A \u0623\u0634\u062A\u0631\u064A\u0647\u0627 \u0644\u064A\u0643\u061F",
+  "\u0625\u064A\u0647 \u0623\u0643\u062A\u0631 \u0645\u0648\u0642\u0641 \u0636\u062D\u0643\u0646\u0627 \u0641\u064A\u0647 \u0645\u0646 \u0642\u0644\u0628\u0646\u0627 \u0633\u0648\u0627\u061F",
+  "\u0625\u064A\u0647 \u0623\u0643\u062A\u0631 \u0635\u0641\u0629 \u0628\u062A\u0648\u0635\u0641 \u062D\u0628\u064A \u0644\u064A\u0643\u061F",
+  "\u0625\u064A\u0647 \u0627\u0644\u0645\u063A\u0627\u0645\u0631\u0629 \u0627\u0644\u0644\u064A \u0646\u0641\u0633\u064A \u0646\u062C\u0631\u0628\u0647\u0627 \u0645\u0639 \u0628\u0639\u0636\u061F",
+  "\u0625\u064A\u0647 \u0627\u0644\u0631\u0633\u0627\u0644\u0629 \u0627\u0644\u0644\u064A \u0645\u0645\u0643\u0646 \u062A\u0641\u0631\u062D\u0646\u064A \u0641\u064A \u0623\u064A \u062B\u0627\u0646\u064A\u0629\u061F"
+];
 const defaultDb = {
   messages: [
     {
@@ -65,6 +97,7 @@ const defaultDb = {
     { id: "d-4", title: "\u0646\u062D\u0642\u0642 \u0623\u0639\u0644\u0649 \u0627\u0644\u062F\u0631\u062C\u0627\u062A \u0648\u0646\u062A\u0641\u0648\u0642 \u0641\u064A \u062F\u0631\u0627\u0633\u062A\u0646\u0627 \u0648\u0646\u0641\u0631\u062D \u0623\u0647\u0627\u0644\u064A\u0646\u0627 \u{1F393}", desc: "\u0646\u0634\u062C\u0639 \u0628\u0639\u0636 \u0639\u0644\u0649 \u0627\u0644\u0645\u0630\u0627\u0643\u0631\u0629 \u0648\u0646\u0648\u0635\u0644 \u0644\u0643\u0644 \u0647\u062F\u0641 \u0628\u0646\u062D\u0644\u0645 \u0628\u064A\u0647.", author: "\u0645\u062D\u0645\u062F \u0648\u064A\u0627\u0633\u0645\u064A\u0646", completed: false },
     { id: "d-5", title: "\u0646\u0631\u0648\u062D \u0631\u062D\u0644\u0629 \u0644\u0644\u0628\u062D\u0631 \u0648\u0646\u062A\u0641\u0631\u062C \u0639\u0644\u0649 \u0627\u0644\u063A\u0631\u0648\u0628 \u0633\u0648\u0627 \u{1F305}", desc: "\u0646\u0633\u0645\u0639 \u0635\u0648\u062A \u0627\u0644\u0645\u0648\u062C \u0648\u0646\u062A\u0643\u0644\u0645 \u0641\u064A \u0643\u0644 \u062D\u0627\u062C\u0629 \u0641\u064A \u0647\u062F\u0648\u0621.", author: "\u0645\u062D\u0645\u062F \u0648\u064A\u0627\u0633\u0645\u064A\u0646", completed: true }
   ],
+  quizQuestions: DEFAULT_QUIZ_QUESTIONS,
   quizAnswers: {
     mohamed: {},
     yasmine: {}
@@ -76,17 +109,31 @@ const defaultDb = {
   photos: [],
   lastUpdated: Date.now()
 };
+let cachedDb = null;
 function readDb() {
   try {
+    if (cachedDb) return cachedDb;
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
     if (!fs.existsSync(dbFilePath)) {
       fs.writeFileSync(dbFilePath, JSON.stringify(defaultDb, null, 2), "utf-8");
-      return defaultDb;
+      cachedDb = JSON.parse(JSON.stringify(defaultDb));
+      return cachedDb;
     }
     const raw = fs.readFileSync(dbFilePath, "utf-8");
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (!parsed.quizQuestions || !Array.isArray(parsed.quizQuestions) || parsed.quizQuestions.length === 0) {
+      parsed.quizQuestions = DEFAULT_QUIZ_QUESTIONS;
+    }
+    if (!parsed.photos) parsed.photos = [];
+    if (!parsed.messages) parsed.messages = defaultDb.messages;
+    if (!parsed.memories) parsed.memories = defaultDb.memories;
+    if (!parsed.dreams) parsed.dreams = defaultDb.dreams;
+    if (!parsed.quizAnswers) parsed.quizAnswers = { mohamed: {}, yasmine: {} };
+    if (!parsed.quizHighScore) parsed.quizHighScore = { score: 0, holder: "" };
+    cachedDb = parsed;
+    return cachedDb;
   } catch (err) {
     console.error("Error reading db.json:", err);
     return defaultDb;
@@ -98,6 +145,7 @@ function writeDb(data) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
     data.lastUpdated = Date.now();
+    cachedDb = data;
     fs.writeFileSync(dbFilePath, JSON.stringify(data, null, 2), "utf-8");
     return true;
   } catch (err) {
@@ -293,24 +341,67 @@ app.post("/api/quiz-score", (req, res) => {
   }
   res.json({ success: true, quizHighScore: db.quizHighScore });
 });
+app.get("/api/quiz-questions", (_req, res) => {
+  const db = readDb();
+  res.json({ success: true, quizQuestions: db.quizQuestions || [] });
+});
+app.post("/api/quiz-questions", (req, res) => {
+  const { question, mohamedAns, yasmineAns } = req.body;
+  if (!question || !String(question).trim()) {
+    return res.status(400).json({ success: false, error: "Question text required" });
+  }
+  const db = readDb();
+  const q = String(question).trim();
+  db.quizQuestions = db.quizQuestions || [];
+  if (!db.quizQuestions.includes(q)) {
+    db.quizQuestions.unshift(q);
+  }
+  db.quizAnswers = db.quizAnswers || { mohamed: {}, yasmine: {} };
+  if (mohamedAns) {
+    db.quizAnswers.mohamed = db.quizAnswers.mohamed || {};
+    db.quizAnswers.mohamed[q] = String(mohamedAns).trim();
+  }
+  if (yasmineAns) {
+    db.quizAnswers.yasmine = db.quizAnswers.yasmine || {};
+    db.quizAnswers.yasmine[q] = String(yasmineAns).trim();
+  }
+  writeDb(db);
+  res.json({ success: true, quizQuestions: db.quizQuestions, quizAnswers: db.quizAnswers });
+});
+app.delete("/api/quiz-questions", (req, res) => {
+  const { question } = req.body;
+  if (!question) {
+    return res.status(400).json({ success: false, error: "Question required" });
+  }
+  const db = readDb();
+  db.quizQuestions = (db.quizQuestions || []).filter((q) => q !== question);
+  writeDb(db);
+  res.json({ success: true, quizQuestions: db.quizQuestions });
+});
 app.get("/api/photos", (_req, res) => {
   const db = readDb();
   res.json({ success: true, photos: db.photos || [] });
 });
 app.post("/api/photos", (req, res) => {
-  const { id, title, date, data } = req.body;
+  const { id, title, tag, date, data } = req.body;
   if (!data) {
     return res.status(400).json({ success: false, error: "Photo data required" });
   }
   const db = readDb();
   const newPhoto = {
     id: id || "photo-" + Date.now(),
-    title: title || "\u0635\u0648\u0631\u0629 \u0645\u0646 \u0639\u0627\u0644\u0645\u0646\u0627 \u2764\uFE0F",
+    title: title || "\u0644\u062D\u0638\u0629 \u062D\u0644\u0648\u0629 \u0628\u062A\u062C\u0645\u0639\u0646\u0627 \u2764\uFE0F",
+    tag: tag || "\u062D\u0628\u0646\u0627 \u0648\u0639\u0634\u0642\u0646\u0627 \u2764\uFE0F",
     date: date || (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
     data
   };
   db.photos = db.photos || [];
-  db.photos.unshift(newPhoto);
+  const existingIdx = db.photos.findIndex((p) => p.id === newPhoto.id);
+  if (existingIdx !== -1) {
+    db.photos[existingIdx] = newPhoto;
+  } else {
+    db.photos.unshift(newPhoto);
+  }
   writeDb(db);
   res.json({ success: true, photo: newPhoto, allPhotos: db.photos });
 });

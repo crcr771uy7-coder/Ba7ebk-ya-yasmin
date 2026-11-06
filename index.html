@@ -354,19 +354,91 @@
       display: none;
     }
 
-    /* Private Space Badge */
-    .private-badge {
+    /* Live Sync Badge & Animations */
+    .sync-badge {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      background: rgba(30, 4, 8, 0.85);
-      border: 1px solid rgba(255, 23, 68, 0.35);
+      gap: 8px;
+      background: rgba(20, 3, 6, 0.9);
+      border: 1px solid rgba(0, 230, 118, 0.4);
       padding: 6px 14px;
       border-radius: 999px;
-      font-size: 0.85rem;
+      font-size: 0.82rem;
       font-weight: 700;
-      color: var(--gold-light);
+      color: #fff;
+      box-shadow: 0 0 15px rgba(0, 230, 118, 0.15);
       user-select: none;
+      transition: all 0.3s ease;
+    }
+    .sync-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #00e676;
+      box-shadow: 0 0 8px #00e676;
+      display: inline-block;
+      animation: pulseSyncDot 2s infinite ease-in-out;
+    }
+    .sync-dot.syncing {
+      background: #ffb300;
+      box-shadow: 0 0 8px #ffb300;
+      animation: pulseSyncDot 0.6s infinite ease-in-out;
+    }
+    .sync-dot.offline {
+      background: #9e9e9e;
+      box-shadow: none;
+      animation: none;
+    }
+    @keyframes pulseSyncDot {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.35); opacity: 0.55; }
+    }
+    .sync-reload-btn {
+      background: none;
+      border: none;
+      color: var(--gold-light);
+      cursor: pointer;
+      font-size: 0.95rem;
+      padding: 2px 4px;
+      display: inline-flex;
+      align-items: center;
+      transition: transform 0.4s ease;
+    }
+    .sync-reload-btn.spinning {
+      transform: rotate(360deg);
+    }
+    /* Romantic Toast Notifications */
+    .romantic-toast-container {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      z-index: 99999;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      pointer-events: none;
+    }
+    .romantic-toast {
+      background: rgba(25, 4, 8, 0.95);
+      border: 1px solid rgba(255, 23, 68, 0.5);
+      box-shadow: 0 8px 30px rgba(255, 23, 68, 0.3);
+      backdrop-filter: blur(12px);
+      color: #fff;
+      padding: 12px 18px;
+      border-radius: 14px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      transform: translateY(-20px) scale(0.95);
+      opacity: 0;
+      transition: all 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      pointer-events: auto;
+    }
+    .romantic-toast.show {
+      transform: translateY(0) scale(1);
+      opacity: 1;
     }
 
     /* Volume Slider Popover */
@@ -1341,7 +1413,7 @@
       }
       .mobile-menu-btn { display: flex; }
       .player-select-grid { grid-template-columns: 1fr; }
-      .private-badge { display: none; }
+      .sync-badge { font-size: 0.72rem; padding: 4px 10px; gap: 5px; }
     }
   </style>
 </head>
@@ -1410,9 +1482,11 @@
 
         <!-- أدوات التحكم السريعة -->
         <div class="header-actions">
-          <!-- شارة مساحتنا الخاصة المضمونة محلياً -->
-          <div class="private-badge" title="بياناتكم محفوظة على هذا الجهاز بنسبة 100% وبدون انقطاع">
-            <span>🔒 مساحتنا الخاصة</span>
+          <!-- شارة المزامنة اللحظية بين الأجهزة -->
+          <div class="sync-badge" id="sync-status-badge" title="مزامنة حية بين أجهزة محمد وياسمين">
+            <span class="sync-dot" id="sync-dot"></span>
+            <span id="sync-status-text">متزامن لحظياً ⚡</span>
+            <button class="sync-reload-btn" id="manual-sync-btn" onclick="forceSyncNow(event)" title="تحديث فوري للمزامنة الآن">🔄</button>
           </div>
 
           <!-- زر التحكم بالصوت والموسيقى -->
@@ -3170,6 +3244,11 @@
           if (currentUploadedMemoryImg) {
             allMemories[idx].image = currentUploadedMemoryImg;
           }
+          fetch('/api/memories/' + encodeURIComponent(editId), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(allMemories[idx])
+          }).catch(() => {});
         }
       } else {
         const newMem = {
@@ -3181,6 +3260,11 @@
           image: currentUploadedMemoryImg || ""
         };
         allMemories.unshift(newMem);
+        fetch('/api/memories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newMem)
+        }).catch(() => {});
       }
 
       saveMemoriesToStorage();
@@ -3188,6 +3272,7 @@
       renderMemoriesTimeline();
       closeModal("memory-modal");
       triggerHeartExplosion();
+      notifySyncChange();
     }
 
     function editCurrentFeaturedMemory() {
@@ -3228,6 +3313,8 @@
         saveMemoriesToStorage();
         renderFeaturedMemory();
         renderMemoriesTimeline();
+        fetch('/api/memories/' + encodeURIComponent(id), { method: 'DELETE' }).catch(() => {});
+        notifySyncChange();
       }
     }
 
@@ -3305,15 +3392,21 @@
       }
     ];
 
+    let syncedServerPhotos = [];
+
     async function loadPhotoGallery() {
       const grid = document.getElementById("photo-gallery-grid");
       if (!grid) return;
       grid.innerHTML = "";
 
       let userPhotos = [];
-      try {
-        userPhotos = await appDb.getAll("photos");
-      } catch (e) {}
+      if (syncedServerPhotos && syncedServerPhotos.length > 0) {
+        userPhotos = syncedServerPhotos;
+      } else {
+        try {
+          userPhotos = await appDb.getAll("photos");
+        } catch (e) {}
+      }
 
       const allDisplayPhotos = [...userPhotos, ...SEEDED_SAMPLE_PHOTOS];
 
@@ -3382,10 +3475,30 @@
 
       try {
         await appDb.put("photos", photoItem);
+        const existingIdx = syncedServerPhotos.findIndex(p => p.id === photoItem.id);
+        if (existingIdx !== -1) {
+          syncedServerPhotos[existingIdx] = photoItem;
+        } else {
+          syncedServerPhotos.unshift(photoItem);
+        }
+
         closeModal("photo-modal");
         await loadPhotoGallery();
         triggerHeartExplosion();
         playHeartbeatSound();
+
+        fetch('/api/photos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(photoItem)
+        }).then(r => r.json()).then(data => {
+          if (data && data.success && data.allPhotos) {
+            syncedServerPhotos = data.allPhotos;
+            loadPhotoGallery();
+          }
+        }).catch(() => {});
+
+        notifySyncChange();
       } catch (err) {
         alert("حدث خطأ أثناء حفظ الصورة!");
       }
@@ -3395,7 +3508,10 @@
       if (e) e.stopPropagation();
       if (confirm("هل أنتم متأكدون من حذف هذه الصورة من الألبوم؟ 💔")) {
         await appDb.delete("photos", id);
+        syncedServerPhotos = syncedServerPhotos.filter(p => p.id !== id);
         await loadPhotoGallery();
+        fetch('/api/photos/' + encodeURIComponent(id), { method: 'DELETE' }).catch(() => {});
+        notifySyncChange();
       }
     }
 
@@ -3586,6 +3702,8 @@
           triggerHeartExplosion();
           playHeartbeatSound();
         }
+        fetch('/api/dreams/' + encodeURIComponent(id) + '/toggle', { method: 'PATCH' }).catch(() => {});
+        notifySyncChange();
       }
     }
 
@@ -3612,21 +3730,33 @@
           d.title = title;
           d.author = author;
           d.desc = desc;
+          fetch('/api/dreams/' + encodeURIComponent(editId), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(d)
+          }).catch(() => {});
         }
       } else {
-        allDreams.push({
+        const newDream = {
           id: "dream-" + Date.now(),
           title,
           author,
           desc,
           completed: false
-        });
+        };
+        allDreams.push(newDream);
+        fetch('/api/dreams', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newDream)
+        }).catch(() => {});
       }
 
       saveDreamsToStorage();
       renderDreamsList();
       closeModal("dream-modal");
       triggerHeartExplosion();
+      notifySyncChange();
     }
 
     function editDream(id) {
@@ -3645,6 +3775,8 @@
         allDreams = allDreams.filter(x => x.id !== id);
         saveDreamsToStorage();
         renderDreamsList();
+        fetch('/api/dreams/' + encodeURIComponent(id), { method: 'DELETE' }).catch(() => {});
+        notifySyncChange();
       }
     }
 
@@ -3802,8 +3934,14 @@
       if (quizScore > savedHigh) {
         localStorage.setItem("romantic_quiz_highscore", quizScore);
         localStorage.setItem("romantic_quiz_high_holder", quizPlayer);
+        fetch('/api/quiz-score', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ score: quizScore, holder: quizPlayer })
+        }).catch(() => {});
       }
       updateHighScoreBadge();
+      notifySyncChange();
     }
 
     function resetQuizGame() {
@@ -3851,14 +3989,21 @@
       if (yasmineAns) refs.yasmine[qText] = yasmineAns;
       saveStoredReferenceAnswers(refs);
 
+      fetch('/api/quiz-questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: qText, mohamedAns, yasmineAns })
+      }).catch(() => {});
+
       closeModal("add-question-modal");
-      alert("تمت إضافة السؤال بنجاح إلى بنك الأسئلة! هيظهر في جولات اللعب القادمة ❤️");
+      showRomanticToast("تمت إضافة السؤال بنجاح وتزامن مع كل الأجهزة! ❤️", "🧠");
       triggerHeartExplosion();
       playHeartbeatSound();
 
       if (document.getElementById("quiz-answers-modal").classList.contains("active")) {
         renderAnswersInputsForTab();
       }
+      notifySyncChange();
     }
 
     // إدارة الأسئلة وحذفها
@@ -3867,6 +4012,12 @@
         allQuizQuestions = allQuizQuestions.filter(q => q !== qText);
         saveQuizQuestions();
         renderAnswersInputsForTab();
+        fetch('/api/quiz-questions', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question: qText })
+        }).catch(() => {});
+        notifySyncChange();
       }
     }
 
@@ -3929,8 +4080,16 @@
       });
 
       saveStoredReferenceAnswers(refs);
-      alert("تم حفظ إجاباتك المرجعية بنجاح في متصفحك! جاهزين للعب ❤️");
+
+      fetch('/api/quiz-answers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ player: activeAnswersTab, answers: refs[activeAnswersTab] })
+      }).catch(() => {});
+
+      showRomanticToast("تم حفظ وتزامن إجاباتك المرجعية بنجاح! جاهزين للعب ❤️", "💌");
       closeModal("quiz-answers-modal");
+      notifySyncChange();
     }
 
     /*
@@ -4058,6 +4217,14 @@
       input.value = "";
       triggerHeartExplosion();
       playHeartbeatSound();
+
+      fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newMsg)
+      }).catch(() => {});
+
+      notifySyncChange();
     }
 
     function appendEmojiToChat(emoji) {
@@ -4074,6 +4241,12 @@
         msg.text = newText.trim();
         saveMutualMessagesToStorage();
         renderMutualMessagesChat();
+        fetch('/api/messages/' + encodeURIComponent(id), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: msg.text })
+        }).catch(() => {});
+        notifySyncChange();
       }
     }
 
@@ -4082,6 +4255,8 @@
         mutualMessages = mutualMessages.filter(m => m.id !== id);
         saveMutualMessagesToStorage();
         renderMutualMessagesChat();
+        fetch('/api/messages/' + encodeURIComponent(id), { method: 'DELETE' }).catch(() => {});
+        notifySyncChange();
       }
     }
 
@@ -4265,6 +4440,165 @@
 
     /*
      * ========================================================
+     * ⚡ 20. محرك المزامنة اللحظية بين جميع الأجهزة (Live Server Sync)
+     * ========================================================
+     */
+    let lastClientSyncTime = 0;
+    let isSyncing = false;
+
+    function showRomanticToast(message, icon = '❤️') {
+      let container = document.getElementById("romantic-toast-container");
+      if (!container) {
+        container = document.createElement("div");
+        container.id = "romantic-toast-container";
+        container.className = "romantic-toast-container";
+        document.body.appendChild(container);
+      }
+
+      const toast = document.createElement("div");
+      toast.className = "romantic-toast";
+      toast.innerHTML = `
+        <span style="font-size: 1.35rem;">${icon}</span>
+        <span>${escapeHtml(message)}</span>
+      `;
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.classList.add("show");
+      }, 50);
+
+      setTimeout(() => {
+        toast.classList.remove("show");
+        setTimeout(() => toast.remove(), 400);
+      }, 3500);
+    }
+
+    function notifySyncChange() {
+      // Trigger sync after a brief moment to update lastUpdated on server and reflect
+      setTimeout(() => syncWithServer(true), 350);
+    }
+
+    function forceSyncNow(e) {
+      if (e) e.stopPropagation();
+      syncWithServer(true);
+      showRomanticToast("تم تحديث المزامنة مع السيرفر فورياً! ✨", "🔄");
+    }
+
+    async function syncWithServer(force = false) {
+      if (isSyncing && !force) return;
+      isSyncing = true;
+
+      const dot = document.getElementById("sync-dot");
+      const text = document.getElementById("sync-status-text");
+      const btn = document.getElementById("manual-sync-btn");
+
+      if (btn) btn.classList.add("spinning");
+      if (dot && dot.className.indexOf("syncing") === -1) {
+        dot.className = "sync-dot syncing";
+      }
+
+      try {
+        const res = await fetch('/api/sync?_t=' + Date.now(), {
+          cache: 'no-store'
+        });
+
+        if (!res.ok) throw new Error('Sync response not ok');
+        const json = await res.json();
+
+        if (json && json.success && json.data) {
+          const data = json.data;
+          const serverUpdated = Number(data.lastUpdated) || 0;
+
+          if (force || serverUpdated > lastClientSyncTime) {
+            // 1. Messages sync
+            if (data.messages && Array.isArray(data.messages)) {
+              const prevMsgCount = mutualMessages.length;
+              const hasNewerMsg = data.messages.length > prevMsgCount;
+              mutualMessages = data.messages;
+              saveMutualMessagesToStorage();
+              renderMutualMessagesChat();
+              if (hasNewerMsg && lastClientSyncTime > 0) {
+                const latestMsg = data.messages[data.messages.length - 1];
+                const senderName = latestMsg.sender === "mohamed" ? "محمد 👑" : "ياسمين 🌸";
+                showRomanticToast(`وصلت رسالة جديدة من ${senderName}! ❤️`, "💌");
+                playHeartbeatSound();
+              }
+            }
+
+            // 2. Memories sync
+            if (data.memories && Array.isArray(data.memories)) {
+              allMemories = data.memories;
+              saveMemoriesToStorage();
+              renderFeaturedMemory();
+              renderMemoriesTimeline();
+            }
+
+            // 3. Dreams sync
+            if (data.dreams && Array.isArray(data.dreams)) {
+              allDreams = data.dreams;
+              saveDreamsToStorage();
+              renderDreamsList();
+            }
+
+            // 4. Quiz Questions sync
+            if (data.quizQuestions && Array.isArray(data.quizQuestions) && data.quizQuestions.length > 0) {
+              allQuizQuestions = data.quizQuestions;
+              saveQuizQuestions();
+              if (document.getElementById("quiz-answers-modal") && document.getElementById("quiz-answers-modal").classList.contains("active")) {
+                renderAnswersInputsForTab();
+              }
+            }
+
+            // 5. Quiz Answers sync
+            if (data.quizAnswers) {
+              const currentRefs = getStoredReferenceAnswers();
+              const mergedRefs = {
+                mohamed: { ...(currentRefs.mohamed || {}), ...(data.quizAnswers.mohamed || {}) },
+                yasmine: { ...(currentRefs.yasmine || {}), ...(data.quizAnswers.yasmine || {}) }
+              };
+              saveStoredReferenceAnswers(mergedRefs);
+            }
+
+            // 6. Quiz High Score sync
+            if (data.quizHighScore && typeof data.quizHighScore.score === 'number') {
+              const localHigh = parseInt(localStorage.getItem("romantic_quiz_highscore") || "0");
+              if (data.quizHighScore.score > localHigh) {
+                localStorage.setItem("romantic_quiz_highscore", data.quizHighScore.score);
+                localStorage.setItem("romantic_quiz_high_holder", data.quizHighScore.holder || "");
+                updateHighScoreBadge();
+              }
+            }
+
+            // 7. Photos sync
+            if (data.photos && Array.isArray(data.photos)) {
+              const prevPhotoCount = syncedServerPhotos.length;
+              syncedServerPhotos = data.photos;
+              for (const ph of data.photos) {
+                try { await appDb.put("photos", ph); } catch (e) {}
+              }
+              await loadPhotoGallery();
+              if (data.photos.length > prevPhotoCount && lastClientSyncTime > 0) {
+                showRomanticToast("تمت إضافة صورة جديدة إلى ألبوم الذكريات! 📸", "✨");
+              }
+            }
+
+            lastClientSyncTime = serverUpdated || Date.now();
+          }
+
+          if (dot) dot.className = "sync-dot live";
+          if (text) text.textContent = "متزامن لحظياً ⚡";
+        }
+      } catch (err) {
+        if (dot) dot.className = "sync-dot offline";
+        if (text) text.textContent = "وضع الأوفلاين 🔒";
+      } finally {
+        isSyncing = false;
+        if (btn) btn.classList.remove("spinning");
+      }
+    }
+
+    /*
+     * ========================================================
      * 🚀 21. بدء تشغيل الصفحة والتحميل الأولي
      * ========================================================
      */
@@ -4292,6 +4626,13 @@
       loadVideoGallery();
       loadDreams();
       loadMutualMessages();
+
+      // بدء المزامنة الحية الفورية مع السيرفر
+      syncWithServer(true);
+      setInterval(() => syncWithServer(false), 2500);
+
+      window.addEventListener("focus", () => syncWithServer(true));
+      window.addEventListener("online", () => syncWithServer(true));
 
       const unlockAudio = () => {
         getAudioContext();

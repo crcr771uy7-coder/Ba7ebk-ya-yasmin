@@ -10,9 +10,9 @@ const app = express();
 const port = parseInt(process.env.PORT || '3000', 10);
 const isProd = process.env.NODE_ENV === 'production';
 
-// Support JSON body up to 25MB for base64 photo sync
-app.use(express.json({ limit: '25mb' }));
-app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+// Support JSON body up to 50MB for base64 photo sync
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // CORS headers for flexibility
 app.use((_req, res, next) => {
@@ -25,6 +25,39 @@ app.use((_req, res, next) => {
 // Database file path: persisted on disk in data/db.json
 const dataDir = path.join(__dirname, 'data');
 const dbFilePath = path.join(dataDir, 'db.json');
+
+const DEFAULT_QUIZ_QUESTIONS = [
+  "إيه أكتر حاجة بتحبها في شخصيتي؟",
+  "إيه أكتر أكلة بحبها ومبشبعش منها؟",
+  "إيه المكان اللي نفسي أزوره معاك؟",
+  "إيه أكتر حاجة بتفرحني من قلبي؟",
+  "إيه أكتر كلمة بقولها وبتحب تسمعها مني؟",
+  "إيه اللون المفضل عندي؟",
+  "إيه أكتر وقت بحب أتكلم فيه معاك؟",
+  "إيه الحاجة اللي نفسي نتعلمها سوا؟",
+  "إيه نوع الأفلام اللي بحب نتفرج عليه؟",
+  "إيه أكتر ذكرى مميزة بينا بالنسبالي؟",
+  "إيه أكتر حركة بعملها بتخليك تبتسم؟",
+  "إيه أكبر حلم نفسي أحققه معاك؟",
+  "إيه أكتر حاجة بتعصبني أو توترني؟",
+  "إيه هوايتي المفضلة اللي بستمتع بيها؟",
+  "إيه المشروب المفضل عندي؟",
+  "بحب الصيف ولا الشتاء أكتر؟",
+  "إيه أكتر صفة بقدرها فيك وفي الناس؟",
+  "إيه المكان اللي بحس فيه بأعلى درجات الراحة؟",
+  "إيه أكتر أغنية بتفكرني بيك دايماً؟",
+  "إيه أكتر مادة أو مجال بحبه؟",
+  "إيه الكلمة اللي لما بتقولها بتطمني؟",
+  "بحب المفاجآت ولا التخطيط المنظم؟",
+  "إيه أكتر موقف بينا مش ممكن أنساه طول عمري؟",
+  "إيه أكتر حاجة بتخليني فخور بيك وبنفسي؟",
+  "إيه النشاط اللي بنحبه في وقت فراغنا؟",
+  "إيه أول هدية نفسي أشتريها ليك؟",
+  "إيه أكتر موقف ضحكنا فيه من قلبنا سوا؟",
+  "إيه أكتر صفة بتوصف حبي ليك؟",
+  "إيه المغامرة اللي نفسي نجربها مع بعض؟",
+  "إيه الرسالة اللي ممكن تفرحني في أي ثانية؟"
+];
 
 const defaultDb = {
   messages: [
@@ -74,6 +107,7 @@ const defaultDb = {
     { id: "d-4", title: "نحقق أعلى الدرجات ونتفوق في دراستنا ونفرح أهالينا 🎓", desc: "نشجع بعض على المذاكرة ونوصل لكل هدف بنحلم بيه.", author: "محمد وياسمين", completed: false },
     { id: "d-5", title: "نروح رحلة للبحر ونتفرج على الغروب سوا 🌅", desc: "نسمع صوت الموج ونتكلم في كل حاجة في هدوء.", author: "محمد وياسمين", completed: true }
   ],
+  quizQuestions: DEFAULT_QUIZ_QUESTIONS,
   quizAnswers: {
     mohamed: {},
     yasmine: {}
@@ -82,33 +116,49 @@ const defaultDb = {
     score: 0,
     holder: ""
   },
-  photos: [],
+  photos: [] as any[],
   lastUpdated: Date.now()
 };
 
+let cachedDb: any = null;
+
 function readDb() {
   try {
+    if (cachedDb) return cachedDb;
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
     if (!fs.existsSync(dbFilePath)) {
       fs.writeFileSync(dbFilePath, JSON.stringify(defaultDb, null, 2), 'utf-8');
-      return defaultDb;
+      cachedDb = JSON.parse(JSON.stringify(defaultDb));
+      return cachedDb;
     }
     const raw = fs.readFileSync(dbFilePath, 'utf-8');
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    if (!parsed.quizQuestions || !Array.isArray(parsed.quizQuestions) || parsed.quizQuestions.length === 0) {
+      parsed.quizQuestions = DEFAULT_QUIZ_QUESTIONS;
+    }
+    if (!parsed.photos) parsed.photos = [];
+    if (!parsed.messages) parsed.messages = defaultDb.messages;
+    if (!parsed.memories) parsed.memories = defaultDb.memories;
+    if (!parsed.dreams) parsed.dreams = defaultDb.dreams;
+    if (!parsed.quizAnswers) parsed.quizAnswers = { mohamed: {}, yasmine: {} };
+    if (!parsed.quizHighScore) parsed.quizHighScore = { score: 0, holder: "" };
+    cachedDb = parsed;
+    return cachedDb;
   } catch (err) {
     console.error('Error reading db.json:', err);
     return defaultDb;
   }
 }
 
-function writeDb(data: typeof defaultDb) {
+function writeDb(data: any) {
   try {
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
     data.lastUpdated = Date.now();
+    cachedDb = data;
     fs.writeFileSync(dbFilePath, JSON.stringify(data, null, 2), 'utf-8');
     return true;
   } catch (err) {
@@ -336,26 +386,75 @@ app.post('/api/quiz-score', (req, res) => {
   res.json({ success: true, quizHighScore: db.quizHighScore });
 });
 
-// 7. Photos API
+// 7. Quiz Questions API
+app.get('/api/quiz-questions', (_req, res) => {
+  const db = readDb();
+  res.json({ success: true, quizQuestions: db.quizQuestions || [] });
+});
+
+app.post('/api/quiz-questions', (req, res) => {
+  const { question, mohamedAns, yasmineAns } = req.body;
+  if (!question || !String(question).trim()) {
+    return res.status(400).json({ success: false, error: 'Question text required' });
+  }
+  const db = readDb();
+  const q = String(question).trim();
+  db.quizQuestions = db.quizQuestions || [];
+  if (!db.quizQuestions.includes(q)) {
+    db.quizQuestions.unshift(q);
+  }
+
+  db.quizAnswers = db.quizAnswers || { mohamed: {}, yasmine: {} };
+  if (mohamedAns) {
+    db.quizAnswers.mohamed = db.quizAnswers.mohamed || {};
+    db.quizAnswers.mohamed[q] = String(mohamedAns).trim();
+  }
+  if (yasmineAns) {
+    db.quizAnswers.yasmine = db.quizAnswers.yasmine || {};
+    db.quizAnswers.yasmine[q] = String(yasmineAns).trim();
+  }
+
+  writeDb(db);
+  res.json({ success: true, quizQuestions: db.quizQuestions, quizAnswers: db.quizAnswers });
+});
+
+app.delete('/api/quiz-questions', (req, res) => {
+  const { question } = req.body;
+  if (!question) {
+    return res.status(400).json({ success: false, error: 'Question required' });
+  }
+  const db = readDb();
+  db.quizQuestions = (db.quizQuestions || []).filter((q: string) => q !== question);
+  writeDb(db);
+  res.json({ success: true, quizQuestions: db.quizQuestions });
+});
+
+// 8. Photos API
 app.get('/api/photos', (_req, res) => {
   const db = readDb();
   res.json({ success: true, photos: db.photos || [] });
 });
 
 app.post('/api/photos', (req, res) => {
-  const { id, title, date, data } = req.body;
+  const { id, title, tag, date, data } = req.body;
   if (!data) {
     return res.status(400).json({ success: false, error: 'Photo data required' });
   }
   const db = readDb();
   const newPhoto = {
     id: id || 'photo-' + Date.now(),
-    title: title || 'صورة من عالمنا ❤️',
+    title: title || 'لحظة حلوة بتجمعنا ❤️',
+    tag: tag || 'حبنا وعشقنا ❤️',
     date: date || new Date().toISOString().split('T')[0],
     data
   };
   db.photos = db.photos || [];
-  db.photos.unshift(newPhoto);
+  const existingIdx = db.photos.findIndex((p: any) => p.id === newPhoto.id);
+  if (existingIdx !== -1) {
+    db.photos[existingIdx] = newPhoto;
+  } else {
+    db.photos.unshift(newPhoto);
+  }
   writeDb(db);
   res.json({ success: true, photo: newPhoto, allPhotos: db.photos });
 });
