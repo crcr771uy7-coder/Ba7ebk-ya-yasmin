@@ -353,6 +353,50 @@
       display: none;
     }
 
+    /* Live Server Sync Badge */
+    .sync-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: rgba(26, 4, 8, 0.75);
+      border: 1px solid rgba(255, 23, 68, 0.35);
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #fff;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      user-select: none;
+    }
+    .sync-badge:hover {
+      border-color: var(--gold);
+      background: rgba(212, 175, 55, 0.15);
+      transform: scale(1.02);
+    }
+    .sync-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #ffb300;
+      box-shadow: 0 0 8px #ffb300;
+      display: inline-block;
+      transition: all 0.3s ease;
+    }
+    .sync-dot.online {
+      background: #00e676;
+      box-shadow: 0 0 10px #00e676;
+    }
+    .sync-dot.syncing {
+      background: #29b6f6;
+      box-shadow: 0 0 12px #29b6f6;
+      animation: pulseSync 0.7s infinite alternate;
+    }
+    @keyframes pulseSync {
+      from { opacity: 0.4; transform: scale(0.85); }
+      to { opacity: 1; transform: scale(1.3); }
+    }
+
     /* Volume Slider Popover */
     .volume-control-wrap {
       position: relative;
@@ -1368,6 +1412,12 @@
 
         <!-- أدوات التحكم السريعة -->
         <div class="header-actions">
+          <!-- مؤشر حالة التزامن المباشر مع السيرفر -->
+          <div id="sync-status-indicator" class="sync-badge" title="اضغط للتحديث الفوري والمزامنة بين تليفوناتكم" onclick="triggerManualSync()">
+            <span class="sync-dot" id="sync-dot"></span>
+            <span id="sync-text">جاري الاتصال...</span>
+          </div>
+
           <!-- زر التحكم بالصوت والموسيقى -->
           <div class="volume-control-wrap">
             <button class="icon-btn" id="audio-toggle-btn" title="تشغيل / إيقاف الموسيقى" onclick="toggleAudio()">
@@ -3007,7 +3057,7 @@
       }
     }
 
-    function handleSaveMemory(e) {
+    async function handleSaveMemory(e) {
       e.preventDefault();
       const editId = document.getElementById("memory-edit-id").value;
       const date = document.getElementById("memory-input-date").value;
@@ -3028,6 +3078,12 @@
             allMemories[idx].image = currentUploadedMemoryImg;
           }
         }
+        // مزامنة التعديل مع السيرفر
+        fetch('/api/memories/' + editId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date, title, author, body, image: currentUploadedMemoryImg || "" })
+        }).catch(() => {});
       } else {
         const newMem = {
           id: "mem-" + Date.now(),
@@ -3038,6 +3094,18 @@
           image: currentUploadedMemoryImg || ""
         };
         allMemories.unshift(newMem);
+
+        // إرسال الذكرى الجديدة للسيرفر
+        fetch('/api/memories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newMem)
+        }).then(r => r.json()).then(res => {
+          if (res.success && res.memory) {
+            newMem.id = res.memory.id;
+            saveMemoriesToStorage();
+          }
+        }).catch(() => {});
       }
 
       saveMemoriesToStorage();
@@ -3085,6 +3153,9 @@
         saveMemoriesToStorage();
         renderFeaturedMemory();
         renderMemoriesTimeline();
+
+        // حذف من السيرفر
+        fetch('/api/memories/' + id, { method: 'DELETE' }).catch(() => {});
       }
     }
 
@@ -3431,6 +3502,10 @@
         dream.completed = !dream.completed;
         saveDreamsToStorage();
         renderDreamsList();
+
+        // مزامنة حالة الإنجاز مع السيرفر
+        fetch('/api/dreams/' + id + '/toggle', { method: 'PATCH' }).catch(() => {});
+
         if (dream.completed) {
           triggerHeartExplosion();
           playHeartbeatSound();
@@ -3462,14 +3537,33 @@
           d.author = author;
           d.desc = desc;
         }
+        // تحديث الحلم على السيرفر
+        fetch('/api/dreams/' + editId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, author, desc })
+        }).catch(() => {});
       } else {
-        allDreams.push({
+        const newDream = {
           id: "dream-" + Date.now(),
           title,
           author,
           desc,
           completed: false
-        });
+        };
+        allDreams.push(newDream);
+
+        // إرسال الحلم الجديد للسيرفر
+        fetch('/api/dreams', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newDream)
+        }).then(r => r.json()).then(res => {
+          if (res.success && res.dream) {
+            newDream.id = res.dream.id;
+            saveDreamsToStorage();
+          }
+        }).catch(() => {});
       }
 
       saveDreamsToStorage();
@@ -3494,6 +3588,9 @@
         allDreams = allDreams.filter(x => x.id !== id);
         saveDreamsToStorage();
         renderDreamsList();
+
+        // حذف من السيرفر
+        fetch('/api/dreams/' + id, { method: 'DELETE' }).catch(() => {});
       }
     }
 
@@ -3655,11 +3752,17 @@
         msgEl.textContent = "هنعيد من الأول.. المهم إننا نعرف بعض أكتر ❤️";
       }
 
-      // حفظ أعلى نتيجة
+      // حفظ أعلى نتيجة محلياً وعلى السيرفر
       const savedHigh = parseInt(localStorage.getItem("romantic_quiz_highscore") || "0");
       if (quizScore > savedHigh) {
         localStorage.setItem("romantic_quiz_highscore", quizScore);
         localStorage.setItem("romantic_quiz_high_holder", quizPlayer);
+        // مزامنة السكور مع السيرفر
+        fetch('/api/quiz-score', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ score: quizScore, holder: quizPlayer })
+        }).catch(() => {});
       }
       updateHighScoreBadge();
     }
@@ -3734,7 +3837,15 @@
       });
 
       saveStoredReferenceAnswers(refs);
-      alert("تم حفظ الإجابات المرجعية بنجاح! جاهزين للعب ❤️");
+
+      // مزامنة الإجابات المرجعية مع السيرفر
+      fetch('/api/quiz-answers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ player: activeAnswersTab, answers: refs[activeAnswersTab] })
+      }).catch(() => {});
+
+      alert("تم حفظ الإجابات المرجعية وتزامنها مع السيرفر بنجاح! جاهزين للعب ❤️");
       closeModal("quiz-answers-modal");
     }
 
@@ -3864,6 +3975,19 @@
       input.value = "";
       triggerHeartExplosion();
       playHeartbeatSound();
+
+      // مزامنة فورية مع السيرفر
+      fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newMsg)
+      }).then(r => r.json()).then(res => {
+        if (res.success && Array.isArray(res.allMessages)) {
+          mutualMessages = res.allMessages;
+          saveMutualMessagesToStorage();
+          renderMutualMessagesChat();
+        }
+      }).catch(() => {});
     }
 
     function appendEmojiToChat(emoji) {
@@ -3880,6 +4004,13 @@
         msg.text = newText.trim();
         saveMutualMessagesToStorage();
         renderMutualMessagesChat();
+
+        // مزامنة التعديل مع السيرفر
+        fetch('/api/messages/' + id, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: newText.trim() })
+        }).catch(() => {});
       }
     }
 
@@ -3888,6 +4019,9 @@
         mutualMessages = mutualMessages.filter(m => m.id !== id);
         saveMutualMessagesToStorage();
         renderMutualMessagesChat();
+
+        // حذف من السيرفر
+        fetch('/api/messages/' + id, { method: 'DELETE' }).catch(() => {});
       }
     }
 
@@ -4058,7 +4192,85 @@
 
     /*
      * ========================================================
-     * 🚀 20. بدء تشغيل الصفحة والتحميل الأولي
+     * 🔄 20. مزامنة البيانات الحية مع السيرفر (Live Sync)
+     * ========================================================
+     */
+    let isServerOnline = false;
+    let syncIntervalTimer = null;
+
+    async function syncWithServer(isManual = false) {
+      const dot = document.getElementById("sync-dot");
+      const text = document.getElementById("sync-text");
+      if (dot) dot.className = "sync-dot syncing";
+      if (text && isManual) text.textContent = "جاري المزامنة...";
+
+      try {
+        const res = await fetch("/api/sync", { cache: "no-store" });
+        if (!res.ok) throw new Error("Status " + res.status);
+        const json = await res.json();
+
+        if (json.success && json.data) {
+          isServerOnline = true;
+          const data = json.data;
+
+          // مزامنة الرسائل المتبادلة
+          if (Array.isArray(data.messages)) {
+            const currentIds = new Set(mutualMessages.map(m => m.id));
+            const hasNew = data.messages.some(m => !currentIds.has(m.id));
+            mutualMessages = data.messages;
+            saveMutualMessagesToStorage();
+            renderMutualMessagesChat();
+            if (hasNew && isServerOnline) {
+              playHeartbeatSound();
+            }
+          }
+
+          // مزامنة الأحلام والتقدم
+          if (Array.isArray(data.dreams)) {
+            allDreams = data.dreams;
+            saveDreamsToStorage();
+            renderDreamsList();
+          }
+
+          // مزامنة الذكريات
+          if (Array.isArray(data.memories)) {
+            allMemories = data.memories;
+            saveMemoriesToStorage();
+            renderFeaturedMemory();
+            renderMemoriesTimeline();
+          }
+
+          // مزامنة إجابات اللعبة المرجعية
+          if (data.quizAnswers) {
+            saveStoredReferenceAnswers(data.quizAnswers);
+          }
+
+          // مزامنة أعلى سكور
+          if (data.quizHighScore && data.quizHighScore.score > 0) {
+            localStorage.setItem("romantic_quiz_highscore", data.quizHighScore.score);
+            localStorage.setItem("romantic_quiz_high_holder", data.quizHighScore.holder || "");
+            updateHighScoreBadge();
+          }
+
+          if (dot) dot.className = "sync-dot online";
+          if (text) text.textContent = "متصل ومتزامن لحظياً 🟢";
+        }
+      } catch (err) {
+        isServerOnline = false;
+        if (dot) dot.className = "sync-dot";
+        if (text) text.textContent = "وضع محلي (أوفلاين) 🟡";
+      }
+    }
+
+    function triggerManualSync() {
+      syncWithServer(true).then(() => {
+        triggerHeartExplosion();
+      });
+    }
+
+    /*
+     * ========================================================
+     * 🚀 21. بدء تشغيل الصفحة والتحميل الأولي
      * ========================================================
      */
     window.addEventListener("DOMContentLoaded", () => {
@@ -4079,13 +4291,19 @@
         }, 600);
       }, 900);
 
-      // 2. تحميل البيانات
+      // 2. تحميل البيانات الأولية
       loadSavedMemories();
       getNewRandomQuote();
       loadPhotoGallery();
       loadVideoGallery();
       loadDreams();
       loadMutualMessages();
+
+      // 3. المزامنة المباشرة مع السيرفر والبدء في التحديث الدوري كل 4 ثوانٍ
+      syncWithServer();
+      if (!syncIntervalTimer) {
+        syncIntervalTimer = setInterval(syncWithServer, 4000);
+      }
 
       // فتح Audio Context عند أول لمسة أو نقرة في الصفحة
       const unlockAudio = () => {
